@@ -6,38 +6,53 @@ struct CustomTabError: Error {
     let code: Int
 }
 
-class CustomTab: NSObject {
+final class CustomTab: NSObject {
     func startSession(url: URL, callbackURLScheme: String) async throws -> URL {
         return try await withCheckedThrowingContinuation { continuation in
-            var session: ASWebAuthenticationSession? = nil
-            session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackURLScheme) { callbackURL, error in
-                if let error = error as NSError? {
-                    let authError = CustomTabError(message: error.localizedDescription, code: error.code)
-                    continuation.resume(throwing: authError)
-                } else if let callbackURL = callbackURL {
-                    continuation.resume(returning: callbackURL)
-                    // Cancel the session after receiving a successful callback
-                    session?.cancel()
-                } else {
-                    let authError = CustomTabError(message: "Unknown error", code: -1)
-                    continuation.resume(throwing: authError)
+            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackURLScheme) { callbackURL, error in
+                switch (callbackURL, error) {
+                case let (_, error?):
+                    let nsError = error as NSError
+                    let customTabError = CustomTabError(
+                        message: nsError.localizedDescription,
+                        code: nsError.code
+                    )
+                    continuation.resume(throwing: customTabError)
+                case let (url?, nil):
+                    continuation.resume(returning: url)
+                case (nil, nil):
+                    let customTabError = CustomTabError(
+                        message: "No URL or error returned",
+                        code: -1
+                    )
+                    continuation.resume(throwing: customTabError)
                 }
             }
-            session?.presentationContextProvider = self
-            // Indicates whether the session should ask the browser for a private authentication session
-            session?.prefersEphemeralWebBrowserSession = false
-            // Start the session
-            session?.start()
+            
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false
+            
+            guard session.start() else {
+                continuation.resume(throwing: CustomTabError(
+                    message: "Failed to start session",
+                    code: -2
+                ))
+                return
+            }
         }
     }
 }
 
 extension CustomTab: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        var presentationAnchor: ASPresentationAnchor?
-        DispatchQueue.main.sync {
-            presentationAnchor = UIApplication.shared.windows.first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        let window = DispatchQueue.main.sync {
+            UIApplication.shared.windows.first(where: { $0.isKeyWindow })
         }
-        return presentationAnchor!
+        
+        guard let presentationAnchor = window else {
+            return ASPresentationAnchor()
+        }
+        
+        return presentationAnchor
     }
 }

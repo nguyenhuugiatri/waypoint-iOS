@@ -4,34 +4,34 @@ public struct Utils {
     /// Handles a deep link and extracts relevant information from it.
     /// - Parameter deeplink: The deep link URL as a string.
     /// - Returns: A `Response` object containing the extracted information from the deep link.
-    public static func parseDeepLink(deeplink : String) -> Response {
-        guard let url = URL(string : deeplink) else {
+    public static func parseDeepLink(deeplink: String) -> Response {
+        guard let url = URL(string: deeplink),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+              let queryItems = components.queryItems else {
             return Response(success: false, method: nil, data: nil, address: nil, state: nil)
         }
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: true)
-        var queryParams = [String: String]()
         
-        if let queryItems = components?.queryItems {
-            for queryItem in queryItems {
-                queryParams[queryItem.name] = queryItem.value
+        var queryParams: [String: String] = [:]
+        queryItems.forEach { item in
+            if let value = item.value {
+                queryParams[item.name] = value
             }
         }
-        let isSuccess = queryParams["type"] == "success"
-        let method = queryParams["method"]
-        let data = queryParams["data"]
-        let state = queryParams["state"]
-        let address = queryParams["address"]
-        return Response(success: isSuccess, method: method, data: data, address: address, state: state)
+        
+        return Response(
+            success: queryParams["type"] == "success",
+            method: queryParams["method"],
+            data: queryParams["data"],
+            address: queryParams["address"],
+            state: queryParams["state"]
+        )
     }
     
     public static func getDeepLinkScheme(deepLink: String) -> String {
-        guard let url = URL(string: deepLink), let scheme = url.scheme else {
-            return ""
-        }
-        return scheme
+        return URL(string: deepLink)?.scheme ?? ""
     }
     
     public static func generateRandomState() -> String {
-        return NSUUID().uuidString.lowercased();
+        return UUID().uuidString.lowercased()
     }
 }
